@@ -49,7 +49,7 @@ def format_section(title, items):
     return "\n".join(lines)
 
 
-def build_email_body(today, overdue, due_today, due_tomorrow, due_this_week):
+def build_email_body(today, overdue, due_today, due_tomorrow, due_this_week, dashboard_url):
     sections = []
     if overdue:
         sections.append(format_section("OVERDUE:", overdue))
@@ -57,25 +57,37 @@ def build_email_body(today, overdue, due_today, due_tomorrow, due_this_week):
     sections.append(format_section("DUE TOMORROW:", due_tomorrow))
     sections.append(format_section("DUE THIS WEEK (next 7 days):", due_this_week))
     header = f"To-Do Digest for {today.strftime('%A, %B %d, %Y')}\n"
-    footer = f"\nMissing something? Add it here: {APP_BASE_URL}/dashboard\n"
+    footer = f"\nAdd more assignments (goes straight to your account): {dashboard_url}\n"
     return header + "\n\n".join(sections) + "\n" + footer
 
 
-def build_digest_for_assignments(assignment_rows, today: date | None = None):
+def build_digest_for_assignments(assignment_rows, dashboard_url, today: date | None = None):
     """assignment_rows: list of {due_date: date, title: str}. Returns (subject, body)."""
     today = today or date.today()
     overdue, due_today, due_tomorrow, due_this_week = bucket_items(assignment_rows, today)
-    body = build_email_body(today, overdue, due_today, due_tomorrow, due_this_week)
+    body = build_email_body(today, overdue, due_today, due_tomorrow, due_this_week, dashboard_url)
     subject = f"To-Do Digest -- {today.strftime('%b %d')}"
     return subject, body
 
 
-def build_welcome_email():
+def magic_dashboard_url(user_row) -> str:
+    """The personalized link put in email footers -- clicking it logs the
+    user straight in and lands on their dashboard, no password needed. Older
+    accounts created before this existed get a token lazily on first use."""
+    from . import auth  # local import avoids a hard dependency for callers that don't need it
+
+    token = user_row["magic_token"]
+    if not token:
+        token = auth.regenerate_magic_token(user_row["id"])
+    return f"{APP_BASE_URL}/go/{token}"
+
+
+def build_welcome_email(dashboard_url: str):
     """One-time email sent the moment someone finishes connecting their
     sending account -- that's the earliest point the app is actually able
     to send them anything, since digests go out from their own address."""
     subject = "Thanks for signing up for Rachel's Schedule Reminder System!"
-    body = """\
+    body = f"""\
 Thanks for signing up for Rachel's Schedule Reminder System!
 
 You're set up to start getting a daily email with everything due today,
@@ -149,6 +161,10 @@ Here's how to get the most out of it.
      - You can remove it from this site any time from Settings, or replace
        it with a new one if you ever rotate it.
 
+Your personal link (bookmark it, or just use it from your next digest
+email) -- opening it logs you straight in, no password needed:
+{dashboard_url}
+
 That's everything. If you run into any questions or concerns, send them to
 rbarold@hamilton.edu -- and good luck this semester.
 """
@@ -166,9 +182,34 @@ def send_digest_for_user(user_row, assignment_items, today: date | None = None):
             "password in Settings first."
         )
     app_password = crypto.decrypt(user_row["smtp_app_password_encrypted"])
-    subject, body = build_digest_for_assignments(assignment_items, today)
+    dashboard_url = magic_dashboard_url(user_row)
+    subject, body = build_digest_for_assignments(assignment_items, dashboard_url, today)
     send_email(user_row["smtp_email"], app_password, user_row["email"], subject, body)
     return subject
+
+
+def verify_smtp_credentials(sender_email: str, app_password: str):
+    """Attempts to log in only (no email sent), so Settings can confirm a
+    credential works the moment it's entered instead of only finding out at
+    the next send attempt. Returns (status, message):
+      status "valid"   -- log in succeeded.
+      status "invalid" -- Google definitively rejected it; do not save this.
+      status "unknown" -- couldn't reach Gmail to check (network blip etc.);
+                          safe to save, just unconfirmed.
+    """
+    context = ssl.create_default_context()
+    try:
+        with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, context=context) as server:
+            server.login(sender_email, app_password)
+        return "valid", "Connected successfully."
+    except smtplib.SMTPAuthenticationError:
+        return "invalid", (
+            f"Google rejected that app password for {sender_email}. Double-check "
+            "it's an app password (not your real Gmail password) and that it "
+            "belongs to this exact address, then try again."
+        )
+    except (smtplib.SMTPException, OSError) as e:
+        return "unknown", f"Saved, but couldn't confirm it with Gmail right now ({e})."
 
 
 def send_email(sender_email: str, app_password: str, to_address: str, subject: str, body: str):

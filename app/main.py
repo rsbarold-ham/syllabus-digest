@@ -87,7 +87,9 @@ def signup(request: Request, email: str = Form(...), password: str = Form(...)):
 
 @app.get("/login", response_class=HTMLResponse)
 def login_form(request: Request):
-    return templates.TemplateResponse(request, "login.html", {"error": None})
+    return templates.TemplateResponse(
+        request, "login.html", {"error": request.session.pop("message", None)}
+    )
 
 
 @app.post("/login")
@@ -105,6 +107,18 @@ def login(request: Request, email: str = Form(...), password: str = Form(...)):
 def logout(request: Request):
     request.session.clear()
     return RedirectResponse("/login", status_code=303)
+
+
+@app.get("/go/{token}")
+def magic_login(token: str, request: Request):
+    """The personalized link from the bottom of digest/welcome emails --
+    logs the owning account straight in, no password needed."""
+    user = auth.user_by_magic_token(token)
+    if not user:
+        request.session["message"] = "That link isn't valid anymore. Log in below instead."
+        return RedirectResponse("/login", status_code=303)
+    request.session["user_id"] = user["id"]
+    return RedirectResponse("/dashboard", status_code=303)
 
 
 def require_user(request: Request):
@@ -134,6 +148,7 @@ def dashboard(request: Request, user=Depends(require_user)):
             "message": request.session.pop("message", None),
             "current_year": date.today().year,
             "has_upcoming": has_upcoming,
+            "magic_url": digest.magic_dashboard_url(user),
         },
     )
 
@@ -302,6 +317,14 @@ def set_email_settings(request: Request, smtp_email: str = Form(...), app_passwo
         request.session["message"] = "Enter both your Gmail address and an app password."
         return RedirectResponse("/dashboard", status_code=303)
 
+    status, check_message = digest.verify_smtp_credentials(smtp_email, app_password)
+    if status == "invalid":
+        # Don't save a credential Google has already told us is wrong --
+        # that just reproduces the confusing "worked at signup, silently
+        # fails later" problem this check exists to prevent.
+        request.session["message"] = check_message
+        return RedirectResponse("/dashboard", status_code=303)
+
     is_first_time = not user["smtp_email"]
 
     encrypted = crypto.encrypt(app_password)
@@ -315,14 +338,15 @@ def set_email_settings(request: Request, smtp_email: str = Form(...), app_passwo
     finally:
         conn.close()
 
-    if is_first_time:
+    if is_first_time and status == "valid":
         try:
-            subject, body = digest.build_welcome_email()
+            dashboard_url = digest.magic_dashboard_url(user)
+            subject, body = digest.build_welcome_email(dashboard_url)
             digest.send_email(smtp_email, app_password, user["email"], subject, body)
         except Exception as e:
             print(f"[settings/email] Failed to send welcome email to {user['email']}: {e}")
 
-    request.session["message"] = f"Sending account set to {smtp_email}."
+    request.session["message"] = f"Sending account set to {smtp_email}. {check_message}"
     return RedirectResponse("/dashboard", status_code=303)
 
 
@@ -338,6 +362,36 @@ def clear_email_settings(request: Request, user=Depends(require_user)):
     finally:
         conn.close()
     request.session["message"] = "Sending account removed."
+    return RedirectResponse("/dashboard", status_code=303)
+
+
+@app.post("/settings/regenerate-link")
+def regenerate_link(request: Request, user=Depends(require_user)):
+    auth.regenerate_magic_token(user["id"])
+    request.session["message"] = (
+        "Your email link was reset. The old one in any past emails no longer works; "
+        "your next digest will include the new one."
+    )
+    return RedirectResponse("/dashboard", status_code=303)
+
+
+@app.post("/settings/password")
+def change_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+    user=Depends(require_user),
+):
+    if not auth.verify_password(current_password, user["password_hash"], user["password_salt"]):
+        request.session["message"] = "Current password is incorrect."
+    elif len(new_password) < 8:
+        request.session["message"] = "New password must be at least 8 characters."
+    elif new_password != confirm_password:
+        request.session["message"] = "New password and confirmation didn't match."
+    else:
+        auth.set_password(user["id"], new_password)
+        request.session["message"] = "Password changed."
     return RedirectResponse("/dashboard", status_code=303)
 
 

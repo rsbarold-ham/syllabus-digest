@@ -24,14 +24,52 @@ def verify_password(password: str, stored_hash: str, salt: str) -> bool:
 
 def create_user(email: str, password: str) -> int:
     password_hash, salt = hash_password(password)
+    magic_token = secrets.token_urlsafe(24)
     conn = get_connection()
     try:
         cur = conn.execute(
-            "INSERT INTO users (email, password_hash, password_salt) VALUES (?, ?, ?)",
-            (email.lower().strip(), password_hash, salt),
+            "INSERT INTO users (email, password_hash, password_salt, magic_token) VALUES (?, ?, ?, ?)",
+            (email.lower().strip(), password_hash, salt, magic_token),
         )
         conn.commit()
         return cur.lastrowid
+    finally:
+        conn.close()
+
+
+def regenerate_magic_token(user_id: int) -> str:
+    """Invalidates the old email-footer link (e.g. if it leaked) by issuing a
+    fresh token. Existing sessions are unaffected -- this only changes what
+    the *next* digest email links to."""
+    token = secrets.token_urlsafe(24)
+    conn = get_connection()
+    try:
+        conn.execute("UPDATE users SET magic_token = ? WHERE id = ?", (token, user_id))
+        conn.commit()
+    finally:
+        conn.close()
+    return token
+
+
+def user_by_magic_token(token: str):
+    if not token:
+        return None
+    conn = get_connection()
+    try:
+        return conn.execute("SELECT * FROM users WHERE magic_token = ?", (token,)).fetchone()
+    finally:
+        conn.close()
+
+
+def set_password(user_id: int, new_password: str):
+    password_hash, salt = hash_password(new_password)
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE users SET password_hash = ?, password_salt = ? WHERE id = ?",
+            (password_hash, salt, user_id),
+        )
+        conn.commit()
     finally:
         conn.close()
 

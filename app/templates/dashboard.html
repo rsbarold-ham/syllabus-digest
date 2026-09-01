@@ -1,183 +1,290 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Dashboard -- Syllabus Digest</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
     <div class="topbar">
         <h1>Syllabus Digest</h1>
-        <div>
-            {{ user["email"] }} &middot; <a href="/logout">Log out</a>
+        <div class="topbar-user">
+            <span>{{ user["email"] }}</span>
+            <a href="/logout">Log out</a>
         </div>
     </div>
 
-    {% if message %}<div class="message">{{ message }}</div>{% endif %}
+    <main>
+        {% if message %}<div class="banner banner-info" id="flash">{{ message }}</div>{% endif %}
 
-    {% if not user["smtp_email"] %}
-    <div class="error">You haven't set up a sending email yet -- your daily digest won't go out until you do (see "Email sending" below).</div>
-    {% endif %}
-
-    <div class="card">
-        <h2>Email sending</h2>
-        <p style="font-size:0.85rem;color:#555;">
-            This app sends your digest from <strong>your own</strong> Gmail account, using an
-            <strong>app password</strong> -- a special 16-character code, not your real Gmail
-            password. It's never shown back to you or anyone else after you save it here, and you
-            can revoke it any time without affecting your real password.
-        </p>
-
-        <details style="margin:0.75rem 0;">
-            <summary style="cursor:pointer;font-weight:600;font-size:0.9rem;color:#2563eb;">
-                How do I get an app password? (click to expand)
-            </summary>
-            <ol style="font-size:0.85rem;color:#333;line-height:1.6;padding-left:1.2rem;margin-top:0.6rem;">
-                <li>
-                    App passwords only exist if <strong>2-Step Verification</strong> is turned on
-                    for your Google account. Go to
-                    <a href="https://myaccount.google.com/security" target="_blank" rel="noopener">myaccount.google.com/security</a>
-                    and check under "How you sign in to Google." If it says off, click it and
-                    follow the steps to turn it on (you'll need your phone).
-                </li>
-                <li>
-                    Once that's on, go to
-                    <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">myaccount.google.com/apppasswords</a>.
-                    (If that link says the feature isn't available, it usually means step 1 isn't
-                    fully done yet -- double check 2-Step Verification is actually on, then try
-                    again.)
-                </li>
-                <li>
-                    You may be asked to sign in again -- that's normal, just enter your password.
-                </li>
-                <li>
-                    Under "App name," type anything that helps you remember what it's for --
-                    e.g. <em>"Schedule Reminder"</em> -- and click <strong>Create</strong>.
-                </li>
-                <li>
-                    Google shows you a 16-character code in a yellow box, in four groups of four
-                    letters (like <code>abcd efgh ijkl mnop</code>). Copy the whole thing.
-                </li>
-                <li>
-                    Paste it into the "App password" field below exactly as shown -- spaces are
-                    fine, you don't need to remove them. Put the Gmail address it belongs to in
-                    the field above it, then click <strong>Save</strong>.
-                </li>
-                <li>
-                    That's it. Google only shows you that code once, but you don't need to see it
-                    again -- if you ever lose track of it, just generate a new one and paste that
-                    in instead (it replaces the old one here).
-                </li>
-            </ol>
-        </details>
-
-        {% if user["smtp_email"] %}
-        <p>Currently sending from: <strong>{{ user["smtp_email"] }}</strong></p>
-        <form method="post" action="/settings/email/clear">
-            <button type="submit" class="secondary">Remove sending account</button>
-        </form>
-        <h3 style="margin-top:1rem;font-size:1rem;">Replace it</h3>
+        {% if not user["smtp_email"] %}
+        <div class="banner banner-warn">You haven't set up a sending email yet -- your daily digest won't go out until you do. See "Email sending" below.</div>
         {% endif %}
-        <form method="post" action="/settings/email">
-            <label>Gmail address</label>
-            <input type="email" name="smtp_email" required>
-            <label>App password (16 characters, spaces ok)</label>
-            <input type="password" name="app_password" required>
-            <button type="submit">Save</button>
-        </form>
-    </div>
 
-    <div class="card">
-        <h2>Upload a syllabus</h2>
-        <p style="font-size:0.85rem;color:#555;">PDF, DOCX, or TXT. Parsing is a first draft -- always review the list below afterward.</p>
-        <form method="post" action="/upload" enctype="multipart/form-data">
-            <label>File</label>
-            <input type="file" name="syllabus" accept=".pdf,.docx,.txt" required>
-            <label>Year to assume if the syllabus omits it</label>
-            <input type="number" name="year" value="{{ current_year }}">
-            <label>Parsing instructions (optional) -- one per line</label>
-            <textarea name="instructions" rows="4" style="width:100%;padding:0.5rem;margin-top:0.25rem;border:1px solid #ccc;border-radius:4px;font-size:0.95rem;font-family:inherit;" placeholder="ignore lines containing &quot;office hours&quot;&#10;add prelab due every wednesday at 12pm&#10;add exit ticket due every friday&#10;add final project on december 15"></textarea>
-            <p style="font-size:0.8rem;color:#777;margin-top:0.25rem;">
-                Only these two shapes are understood (anything else is skipped and reported back to you --
-                fix those by hand in the table below instead):
-                <br>&bull; <code>ignore/remove/exclude lines containing "some text"</code>
-                <br>&bull; <code>add &lt;title&gt; due every &lt;weekday&gt; [at &lt;time&gt;]</code> or <code>add &lt;title&gt; on &lt;date&gt;</code>
+        <section class="card">
+            <h2>Email sending</h2>
+            <p class="hint">
+                This app sends your digest from <strong>your own</strong> Gmail account, using an
+                <strong>app password</strong> -- a special 16-character code, not your real Gmail
+                password. It's encrypted, never shown back to you or anyone else after you save it,
+                and you can revoke it any time without affecting your real password.
             </p>
-            <button type="submit">Upload &amp; parse</button>
-        </form>
-    </div>
 
-    <div class="card">
-        <h2>Import from a CSV</h2>
-        <p style="font-size:0.85rem;color:#555;">
-            Already have a <span class="mono">due_date,title</span> CSV -- e.g. one you built and cleaned up with
-            the local/personal version of this tool? Import it directly instead of re-uploading and re-parsing the
-            original syllabus.
-        </p>
-        <form method="post" action="/import-csv" enctype="multipart/form-data">
-            <label>CSV file</label>
-            <input type="file" name="csv_file" accept=".csv" required>
-            <button type="submit">Import</button>
-        </form>
-    </div>
+            <details class="help">
+                <summary>How do I get an app password?</summary>
+                <ol>
+                    <li>
+                        App passwords only exist if <strong>2-Step Verification</strong> is turned on
+                        for your Google account. Go to
+                        <a href="https://myaccount.google.com/security" target="_blank" rel="noopener">myaccount.google.com/security</a>
+                        and check under "How you sign in to Google." If it says off, click it and
+                        follow the steps to turn it on (you'll need your phone).
+                    </li>
+                    <li>
+                        Once that's on, go to
+                        <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">myaccount.google.com/apppasswords</a>.
+                        (If that link says the feature isn't available, it usually means step 1 isn't
+                        fully done yet -- double check 2-Step Verification is actually on, then try again.)
+                    </li>
+                    <li>You may be asked to sign in again -- that's normal, just enter your password.</li>
+                    <li>
+                        Under "App name," type anything that helps you remember what it's for --
+                        e.g. <em>"Schedule Reminder"</em> -- and click <strong>Create</strong>.
+                    </li>
+                    <li>
+                        Google shows you a 16-character code in a yellow box, in four groups of four
+                        letters (like <code>abcd efgh ijkl mnop</code>). Copy the whole thing.
+                    </li>
+                    <li>
+                        Paste it into the "App password" field below exactly as shown -- spaces are
+                        fine. Put the Gmail address it belongs to in the field above it, then click
+                        <strong>Save</strong>. The site checks it with Google immediately, so you'll
+                        know right away if something's off.
+                    </li>
+                </ol>
+            </details>
 
-    <div class="card">
-        <h2>Daily email</h2>
+            {% if user["smtp_email"] %}
+            <div class="kv-row">
+                <span>Currently sending from</span>
+                <strong>{{ user["smtp_email"] }}</strong>
+            </div>
+            <form method="post" action="/settings/email/clear">
+                <button type="submit" class="btn btn-ghost">Remove sending account</button>
+            </form>
+            <h3 class="subhead">Replace it</h3>
+            {% endif %}
+            <form method="post" action="/settings/email" class="stack">
+                <div class="field">
+                    <label for="smtp_email">Gmail address</label>
+                    <input id="smtp_email" type="email" name="smtp_email" required>
+                </div>
+                <div class="field">
+                    <label for="app_password">App password</label>
+                    <input id="app_password" type="password" name="app_password" required placeholder="abcd efgh ijkl mnop">
+                </div>
+                <button type="submit" class="btn btn-primary">Save &amp; verify</button>
+            </form>
+        </section>
 
-        {% if not user["digest_enabled"] %}
-        <div class="message">Daily emails are currently <strong>paused</strong>.</div>
-        {% elif not has_upcoming %}
-        <div class="message">Nothing upcoming in your list, so nothing will be sent until you add more (e.g. next semester's syllabus) -- no need to pause it yourself.</div>
-        {% endif %}
+        <section class="card">
+            <h2>Upload a syllabus</h2>
+            <p class="hint">PDF, DOCX, or TXT. Parsing is a first draft -- always review the list below afterward.</p>
+            <form method="post" action="/upload" enctype="multipart/form-data" class="stack">
+                <div class="field">
+                    <label for="syllabus">File</label>
+                    <input id="syllabus" type="file" name="syllabus" accept=".pdf,.docx,.txt" required>
+                </div>
+                <div class="field field-narrow">
+                    <label for="year">Year to assume if the syllabus omits it</label>
+                    <input id="year" type="number" name="year" value="{{ current_year }}">
+                </div>
+                <div class="field">
+                    <label for="instructions">Parsing instructions (optional) -- one per line</label>
+                    <textarea id="instructions" name="instructions" rows="4" placeholder="ignore lines containing &quot;office hours&quot;&#10;add prelab due every wednesday at 12pm&#10;add exit ticket due every friday&#10;add final project on december 15"></textarea>
+                    <p class="hint hint-tight">
+                        Only these two shapes are understood (anything else is skipped and reported back to you --
+                        fix those by hand in the table below instead):
+                        <br>&bull; <code>ignore/remove/exclude lines containing "some text"</code>
+                        <br>&bull; <code>add &lt;title&gt; due every &lt;weekday&gt; [at &lt;time&gt;]</code> or <code>add &lt;title&gt; on &lt;date&gt;</code>
+                    </p>
+                </div>
+                <button type="submit" class="btn btn-primary">Upload &amp; parse</button>
+            </form>
+        </section>
 
-        <form method="post" action="/settings/digest-toggle">
-            <input type="hidden" name="enabled" value="{{ 0 if user['digest_enabled'] else 1 }}">
-            <button type="submit" class="{{ 'secondary' if user['digest_enabled'] else '' }}">
-                {{ "Pause daily emails" if user["digest_enabled"] else "Resume daily emails" }}
-            </button>
-        </form>
+        <section class="card">
+            <h2>Import from a CSV</h2>
+            <p class="hint">
+                Already have a <span class="mono">due_date,title</span> CSV -- e.g. one you built and cleaned up with
+                the local/personal version of this tool? Import it directly instead of re-uploading and re-parsing
+                the original syllabus.
+            </p>
+            <form method="post" action="/import-csv" enctype="multipart/form-data" class="stack">
+                <div class="field">
+                    <label for="csv_file">CSV file</label>
+                    <input id="csv_file" type="file" name="csv_file" accept=".csv" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Import</button>
+            </form>
+        </section>
 
-        <form method="post" action="/settings/digest-hour" style="margin-top:1.25rem;">
-            <label>Send my digest at (hour, 24h, server local time)</label>
-            <select name="digest_hour">
-                {% for h in range(24) %}
-                <option value="{{ h }}" {% if h == user["digest_hour"] %}selected{% endif %}>{{ "%02d:00" % h }}</option>
-                {% endfor %}
-            </select>
-            <button type="submit">Save</button>
-        </form>
-        <form method="post" action="/send-test">
-            <button type="submit" class="secondary">Send me a test email now</button>
-        </form>
-    </div>
+        <section class="card">
+            <h2>Daily email</h2>
 
-    <div class="card">
-        <h2>Your assignments ({{ assignments|length }})</h2>
-        <table>
-            <tr><th>Due date</th><th>Title</th><th></th></tr>
-            {% for a in assignments %}
-            <tr>
-                <form method="post" action="/assignments/{{ a['id'] }}/edit" class="inline-form">
-                <td><input type="date" name="due_date" value="{{ a['due_date'] }}"></td>
-                <td><input type="text" name="title" value="{{ a['title'] }}"></td>
-                <td class="row-actions">
-                    <button type="submit">Save</button>
-                </form>
-                <form method="post" action="/assignments/{{ a['id'] }}/delete" class="inline-form">
-                    <button type="submit" class="danger" onclick="return confirm('Delete this item?')">Delete</button>
-                </form>
-                </td>
-            </tr>
-            {% endfor %}
-        </table>
+            {% if not user["digest_enabled"] %}
+            <div class="banner banner-info">Daily emails are currently <strong>paused</strong>.</div>
+            {% elif not has_upcoming %}
+            <div class="banner banner-info">Nothing upcoming in your list, so nothing will be sent until you add more (e.g. next semester's syllabus) -- no need to pause it yourself.</div>
+            {% endif %}
 
-        <h3 style="margin-top:1.5rem;">Add an item by hand</h3>
-        <form method="post" action="/assignments/add">
-            <label>Due date</label>
-            <input type="date" name="due_date" required>
-            <label>Title</label>
-            <input type="text" name="title" required placeholder="e.g. Homework 3 due">
-            <button type="submit">Add</button>
-        </form>
-    </div>
+            <form method="post" action="/settings/digest-toggle">
+                <input type="hidden" name="enabled" value="{{ 0 if user['digest_enabled'] else 1 }}">
+                <button type="submit" class="btn {{ 'btn-ghost' if user['digest_enabled'] else 'btn-primary' }}">
+                    {{ "Pause daily emails" if user["digest_enabled"] else "Resume daily emails" }}
+                </button>
+            </form>
+
+            <form method="post" action="/settings/digest-hour" class="stack stack-tight">
+                <div class="field field-narrow">
+                    <label for="digest_hour">Send my digest at (hour, 24h, server local time)</label>
+                    <select id="digest_hour" name="digest_hour">
+                        {% for h in range(24) %}
+                        <option value="{{ h }}" {% if h == user["digest_hour"] %}selected{% endif %}>{{ "%02d:00" % h }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-secondary">Save</button>
+            </form>
+            <form method="post" action="/send-test">
+                <button type="submit" class="btn btn-ghost">Send me a test email now</button>
+            </form>
+
+            <div class="kv-row kv-row-link">
+                <span>Your personal link</span>
+                <a href="{{ magic_url }}" class="mono link-truncate">{{ magic_url }}</a>
+            </div>
+            <p class="hint hint-tight">
+                Bookmark it, or use the one at the bottom of any digest email -- it logs you
+                straight in, no password needed. Leaked it somewhere you shouldn't have?
+            </p>
+            <form method="post" action="/settings/regenerate-link">
+                <button type="submit" class="btn btn-ghost btn-sm">Reset this link</button>
+            </form>
+        </section>
+
+        <section class="card">
+            <h2>Account password</h2>
+            <form method="post" action="/settings/password" class="stack" id="passwordForm">
+                <div class="field">
+                    <label for="current_password">Current password</label>
+                    <input id="current_password" type="password" name="current_password" required>
+                </div>
+                <div class="field">
+                    <label for="new_password">New password (min. 8 characters)</label>
+                    <input id="new_password" type="password" name="new_password" minlength="8" required>
+                </div>
+                <div class="field">
+                    <label for="confirm_password">Confirm new password</label>
+                    <input id="confirm_password" type="password" name="confirm_password" minlength="8" required>
+                </div>
+                <button type="submit" class="btn btn-secondary">Change password</button>
+            </form>
+        </section>
+
+        <section class="card">
+            <div class="card-head-row">
+                <h2>Your assignments</h2>
+                <span class="count-pill">{{ assignments|length }}</span>
+            </div>
+            <p class="hint">Edits save automatically as you leave a field. Nothing is removed unless you click Delete.</p>
+
+            <div class="table-scroll">
+                <table id="assignmentsTable">
+                    <thead>
+                        <tr><th class="col-date">Due date</th><th>Title</th><th class="col-status"></th><th class="col-actions"></th></tr>
+                    </thead>
+                    <tbody>
+                        {% for a in assignments %}
+                        <tr data-id="{{ a['id'] }}">
+                            <td class="col-date"><input type="date" class="autosave" data-field="due_date" value="{{ a['due_date'] }}"></td>
+                            <td><input type="text" class="autosave" data-field="title" value="{{ a['title'] }}"></td>
+                            <td class="col-status"><span class="save-indicator"></span></td>
+                            <td class="col-actions">
+                                <form method="post" action="/assignments/{{ a['id'] }}/delete" class="inline-form">
+                                    <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete this item?')">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <h3 class="subhead">Add an item by hand</h3>
+            <form method="post" action="/assignments/add" class="stack stack-row">
+                <div class="field field-narrow">
+                    <label for="new_due_date">Due date</label>
+                    <input id="new_due_date" type="date" name="due_date" required>
+                </div>
+                <div class="field field-grow">
+                    <label for="new_title">Title</label>
+                    <input id="new_title" type="text" name="title" required placeholder="e.g. Homework 3 due">
+                </div>
+                <button type="submit" class="btn btn-primary">Add</button>
+            </form>
+        </section>
+    </main>
+
+    <script>
+    (function () {
+        var flash = document.getElementById("flash");
+        if (flash) { setTimeout(function () { flash.classList.add("banner-fade"); }, 6000); }
+
+        document.querySelectorAll("#assignmentsTable tbody tr").forEach(function (row) {
+            var id = row.getAttribute("data-id");
+            var indicator = row.querySelector(".save-indicator");
+            row.querySelectorAll(".autosave").forEach(function (input) {
+                input.addEventListener("change", function () { save(); });
+                input.addEventListener("blur", function () { save(); });
+            });
+
+            var lastSent = null;
+            function save() {
+                var dueDate = row.querySelector('[data-field="due_date"]').value;
+                var title = row.querySelector('[data-field="title"]').value;
+                if (!dueDate || !title) return;
+                var key = dueDate + "|" + title;
+                if (key === lastSent) return;
+                lastSent = key;
+
+                indicator.textContent = "Saving...";
+                indicator.className = "save-indicator saving";
+
+                var body = new URLSearchParams({ due_date: dueDate, title: title });
+                fetch("/assignments/" + id + "/edit", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    body: body.toString(),
+                }).then(function (r) {
+                    if (r.ok || r.redirected) {
+                        indicator.textContent = "Saved";
+                        indicator.className = "save-indicator saved";
+                        setTimeout(function () {
+                            if (indicator.textContent === "Saved") indicator.textContent = "";
+                        }, 2000);
+                    } else {
+                        indicator.textContent = "Error";
+                        indicator.className = "save-indicator error";
+                    }
+                }).catch(function () {
+                    indicator.textContent = "Offline?";
+                    indicator.className = "save-indicator error";
+                });
+            }
+        });
+    })();
+    </script>
 </body>
 </html>
