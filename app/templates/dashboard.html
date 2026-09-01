@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dashboard -- Syllabus Digest</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="topbar">
+        <h1>Syllabus Digest</h1>
+        <div>
+            {{ user["email"] }} &middot; <a href="/logout">Log out</a>
+        </div>
+    </div>
+
+    {% if message %}<div class="message">{{ message }}</div>{% endif %}
+
+    {% if not user["smtp_email"] %}
+    <div class="error">You haven't set up a sending email yet -- your daily digest won't go out until you do (see "Email sending" below).</div>
+    {% endif %}
+
+    <div class="card">
+        <h2>Email sending</h2>
+        <p style="font-size:0.85rem;color:#555;">
+            This app sends your digest from <strong>your own</strong> Gmail account, using an
+            <strong>app password</strong> -- a special 16-character code, not your real Gmail
+            password. It's never shown back to you or anyone else after you save it here, and you
+            can revoke it any time without affecting your real password.
+        </p>
+
+        <details style="margin:0.75rem 0;">
+            <summary style="cursor:pointer;font-weight:600;font-size:0.9rem;color:#2563eb;">
+                How do I get an app password? (click to expand)
+            </summary>
+            <ol style="font-size:0.85rem;color:#333;line-height:1.6;padding-left:1.2rem;margin-top:0.6rem;">
+                <li>
+                    App passwords only exist if <strong>2-Step Verification</strong> is turned on
+                    for your Google account. Go to
+                    <a href="https://myaccount.google.com/security" target="_blank" rel="noopener">myaccount.google.com/security</a>
+                    and check under "How you sign in to Google." If it says off, click it and
+                    follow the steps to turn it on (you'll need your phone).
+                </li>
+                <li>
+                    Once that's on, go to
+                    <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">myaccount.google.com/apppasswords</a>.
+                    (If that link says the feature isn't available, it usually means step 1 isn't
+                    fully done yet -- double check 2-Step Verification is actually on, then try
+                    again.)
+                </li>
+                <li>
+                    You may be asked to sign in again -- that's normal, just enter your password.
+                </li>
+                <li>
+                    Under "App name," type anything that helps you remember what it's for --
+                    e.g. <em>"Schedule Reminder"</em> -- and click <strong>Create</strong>.
+                </li>
+                <li>
+                    Google shows you a 16-character code in a yellow box, in four groups of four
+                    letters (like <code>abcd efgh ijkl mnop</code>). Copy the whole thing.
+                </li>
+                <li>
+                    Paste it into the "App password" field below exactly as shown -- spaces are
+                    fine, you don't need to remove them. Put the Gmail address it belongs to in
+                    the field above it, then click <strong>Save</strong>.
+                </li>
+                <li>
+                    That's it. Google only shows you that code once, but you don't need to see it
+                    again -- if you ever lose track of it, just generate a new one and paste that
+                    in instead (it replaces the old one here).
+                </li>
+            </ol>
+        </details>
+
+        {% if user["smtp_email"] %}
+        <p>Currently sending from: <strong>{{ user["smtp_email"] }}</strong></p>
+        <form method="post" action="/settings/email/clear">
+            <button type="submit" class="secondary">Remove sending account</button>
+        </form>
+        <h3 style="margin-top:1rem;font-size:1rem;">Replace it</h3>
+        {% endif %}
+        <form method="post" action="/settings/email">
+            <label>Gmail address</label>
+            <input type="email" name="smtp_email" required>
+            <label>App password (16 characters, spaces ok)</label>
+            <input type="password" name="app_password" required>
+            <button type="submit">Save</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>Upload a syllabus</h2>
+        <p style="font-size:0.85rem;color:#555;">PDF, DOCX, or TXT. Parsing is a first draft -- always review the list below afterward.</p>
+        <form method="post" action="/upload" enctype="multipart/form-data">
+            <label>File</label>
+            <input type="file" name="syllabus" accept=".pdf,.docx,.txt" required>
+            <label>Year to assume if the syllabus omits it</label>
+            <input type="number" name="year" value="{{ current_year }}">
+            <label>Parsing instructions (optional) -- one per line</label>
+            <textarea name="instructions" rows="4" style="width:100%;padding:0.5rem;margin-top:0.25rem;border:1px solid #ccc;border-radius:4px;font-size:0.95rem;font-family:inherit;" placeholder="ignore lines containing &quot;office hours&quot;&#10;add prelab due every wednesday at 12pm&#10;add exit ticket due every friday&#10;add final project on december 15"></textarea>
+            <p style="font-size:0.8rem;color:#777;margin-top:0.25rem;">
+                Only these two shapes are understood (anything else is skipped and reported back to you --
+                fix those by hand in the table below instead):
+                <br>&bull; <code>ignore/remove/exclude lines containing "some text"</code>
+                <br>&bull; <code>add &lt;title&gt; due every &lt;weekday&gt; [at &lt;time&gt;]</code> or <code>add &lt;title&gt; on &lt;date&gt;</code>
+            </p>
+            <button type="submit">Upload &amp; parse</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>Daily email</h2>
+
+        {% if not user["digest_enabled"] %}
+        <div class="message">Daily emails are currently <strong>paused</strong>.</div>
+        {% elif not has_upcoming %}
+        <div class="message">Nothing upcoming in your list, so nothing will be sent until you add more (e.g. next semester's syllabus) -- no need to pause it yourself.</div>
+        {% endif %}
+
+        <form method="post" action="/settings/digest-toggle">
+            <input type="hidden" name="enabled" value="{{ 0 if user['digest_enabled'] else 1 }}">
+            <button type="submit" class="{{ 'secondary' if user['digest_enabled'] else '' }}">
+                {{ "Pause daily emails" if user["digest_enabled"] else "Resume daily emails" }}
+            </button>
+        </form>
+
+        <form method="post" action="/settings/digest-hour" style="margin-top:1.25rem;">
+            <label>Send my digest at (hour, 24h, server local time)</label>
+            <select name="digest_hour">
+                {% for h in range(24) %}
+                <option value="{{ h }}" {% if h == user["digest_hour"] %}selected{% endif %}>{{ "%02d:00" % h }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit">Save</button>
+        </form>
+        <form method="post" action="/send-test">
+            <button type="submit" class="secondary">Send me a test email now</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>Your assignments ({{ assignments|length }})</h2>
+        <table>
+            <tr><th>Due date</th><th>Title</th><th></th></tr>
+            {% for a in assignments %}
+            <tr>
+                <form method="post" action="/assignments/{{ a['id'] }}/edit" class="inline-form">
+                <td><input type="date" name="due_date" value="{{ a['due_date'] }}"></td>
+                <td><input type="text" name="title" value="{{ a['title'] }}"></td>
+                <td class="row-actions">
+                    <button type="submit">Save</button>
+                </form>
+                <form method="post" action="/assignments/{{ a['id'] }}/delete" class="inline-form">
+                    <button type="submit" class="danger" onclick="return confirm('Delete this item?')">Delete</button>
+                </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+
+        <h3 style="margin-top:1.5rem;">Add an item by hand</h3>
+        <form method="post" action="/assignments/add">
+            <label>Due date</label>
+            <input type="date" name="due_date" required>
+            <label>Title</label>
+            <input type="text" name="title" required placeholder="e.g. Homework 3 due">
+            <button type="submit">Add</button>
+        </form>
+    </div>
+</body>
+</html>

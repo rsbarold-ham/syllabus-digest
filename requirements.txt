@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+jinja2
+python-multipart
+itsdangerous
+apscheduler
+python-dotenv
+pdfplumber
+python-docx
+python-dateutil
+cryptography

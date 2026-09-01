@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Log in -- Syllabus Digest</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>Syllabus Digest</h1>
+    <div class="card">
+        <h2>Log in</h2>
+        {% if error %}<div class="error">{{ error }}</div>{% endif %}
+        <form method="post" action="/login">
+            <label>Email</label>
+            <input type="email" name="email" required>
+            <label>Password</label>
+            <input type="password" name="password" required>
+            <button type="submit">Log in</button>
+        </form>
+        <p style="margin-top:1rem; font-size:0.9rem;">No account? <a href="/signup">Sign up</a></p>
+    </div>
+</body>
+</html>

@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sign up -- Syllabus Digest</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>Syllabus Digest</h1>
+    <div class="card">
+        <h2>Create an account</h2>
+        {% if error %}<div class="error">{{ error }}</div>{% endif %}
+        <form method="post" action="/signup">
+            <label>Email (this is where your daily digest will be sent)</label>
+            <input type="email" name="email" required>
+            <label>Password (min. 8 characters)</label>
+            <input type="password" name="password" minlength="8" required>
+            <button type="submit">Sign up</button>
+        </form>
+        <p style="margin-top:1rem; font-size:0.9rem;">Already have an account? <a href="/login">Log in</a></p>
+    </div>
+</body>
+</html>
