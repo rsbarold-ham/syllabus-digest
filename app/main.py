@@ -1,4 +1,5 @@
 import os
+import re
 import secrets
 import shutil
 import uuid
@@ -21,6 +22,54 @@ from .scheduler import start_scheduler, run_hourly_check
 
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR.parent / "uploads"
+
+COURSE_TAG_RE = re.compile(r"^\[([^\]]+)\]")
+COURSE_COLOR_COUNT = 8
+
+
+def get_course_color_overrides(user_id: int) -> dict:
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT tag, color_hex FROM course_colors WHERE user_id = ?", (user_id,)
+        ).fetchall()
+    finally:
+        conn.close()
+    return {r["tag"]: r["color_hex"] for r in rows}
+
+
+def annotate_with_course_colors(rows, overrides: dict | None = None):
+    """Assignments are conventionally titled "[COURSE] rest of title" (what
+    the syllabus parser and CSV import both produce). Pulls that tag out and
+    assigns each distinct course a consistent color, purely so the table can
+    visually group classes -- untagged rows just get no color. A user's
+    `overrides` (tag -> hex, from course_colors) wins over the auto palette."""
+    overrides = overrides or {}
+    tags_in_order = sorted({
+        m.group(1) for r in rows if (m := COURSE_TAG_RE.match(r["title"]))
+    })
+    auto_class = {tag: f"course-{i % COURSE_COLOR_COUNT}" for i, tag in enumerate(tags_in_order)}
+
+    annotated = []
+    for r in rows:
+        m = COURSE_TAG_RE.match(r["title"])
+        tag = m.group(1) if m else None
+        color_value = None
+        if tag in overrides:
+            color_value = overrides[tag]
+        elif tag in auto_class:
+            color_value = f"var(--{auto_class[tag]})"
+        annotated.append({
+            "id": r["id"],
+            "due_date": r["due_date"],
+            "title": r["title"],
+            "completed": r["completed"],
+            "urgent": r["urgent"],
+            "tag": tag,
+            "color_value": color_value,
+            "is_custom_color": tag in overrides,
+        })
+    return annotated
 
 # A missing SESSION_SECRET falls back to a random key generated at process
 # start -- fine for local dev, but it means everyone is logged out on
@@ -138,17 +187,17 @@ def dashboard(request: Request, user=Depends(require_user)):
     finally:
         conn.close()
     today_iso = date.today().isoformat()
-    has_upcoming = any(r["due_date"] >= today_iso for r in rows)
+    has_upcoming = any(r["due_date"] >= today_iso and not r["completed"] for r in rows)
     return templates.TemplateResponse(
         request,
         "dashboard.html",
         {
             "user": user,
-            "assignments": rows,
+            "assignments": annotate_with_course_colors(rows, get_course_color_overrides(user["id"])),
             "message": request.session.pop("message", None),
             "current_year": date.today().year,
             "has_upcoming": has_upcoming,
-            "magic_url": digest.magic_dashboard_url(user),
+            "magic_url": digest.magic_dashboard_url(user, str(request.base_url)),
         },
     )
 
@@ -189,9 +238,19 @@ def upload(
     finally:
         conn.close()
 
+    detected_courses = sorted({m.group(1) for r in rows if (m := COURSE_TAG_RE.match(r["title"]))})
+    course_note = ""
+    if len(detected_courses) >= 2:
+        course_note = (
+            f" This looked like a combined document, so items were auto-tagged by "
+            f"course based on header lines found in it: {', '.join(detected_courses)} -- "
+            "double check that's right, since this is a pattern match, not true "
+            "understanding of the document."
+        )
+
     warning_note = f" Note: {' | '.join(warnings)}" if warnings else ""
     request.session["message"] = (
-        f"Parsed {len(rows)} candidate item(s) from {syllabus.filename}.{warning_note} "
+        f"Parsed {len(rows)} candidate item(s) from {syllabus.filename}.{warning_note}{course_note} "
         "Review them below -- this is a first draft, not a final list."
     )
     return RedirectResponse("/dashboard", status_code=303)
@@ -270,6 +329,44 @@ def edit_assignment(assignment_id: int, request: Request, due_date: str = Form(.
     return RedirectResponse("/dashboard", status_code=303)
 
 
+@app.post("/assignments/{assignment_id}/toggle-complete")
+def toggle_complete(assignment_id: int, completed: int = Form(...), user=Depends(require_user)):
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE assignments SET completed = ? WHERE id = ? AND user_id = ?",
+            (1 if completed else 0, assignment_id, user["id"]),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"status": "ok"}
+
+
+@app.post("/assignments/{assignment_id}/toggle-urgent")
+def toggle_urgent(assignment_id: int, urgent: int = Form(...), user=Depends(require_user)):
+    conn = get_connection()
+    try:
+        if urgent:
+            # (Re-)starts this item's own 12-hour reminder countdown -- see
+            # scheduler.run_urgent_reminders. Un-marking and re-marking
+            # urgent intentionally restarts the clock.
+            conn.execute(
+                "UPDATE assignments SET urgent = 1, urgent_marked_at = datetime('now'), "
+                "urgent_reminder_sent = 0 WHERE id = ? AND user_id = ?",
+                (assignment_id, user["id"]),
+            )
+        else:
+            conn.execute(
+                "UPDATE assignments SET urgent = 0, urgent_marked_at = NULL WHERE id = ? AND user_id = ?",
+                (assignment_id, user["id"]),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"status": "ok"}
+
+
 @app.post("/assignments/{assignment_id}/delete")
 def delete_assignment(assignment_id: int, user=Depends(require_user)):
     conn = get_connection()
@@ -340,9 +437,9 @@ def set_email_settings(request: Request, smtp_email: str = Form(...), app_passwo
 
     if is_first_time and status == "valid":
         try:
-            dashboard_url = digest.magic_dashboard_url(user)
-            subject, body = digest.build_welcome_email(dashboard_url)
-            digest.send_email(smtp_email, app_password, user["email"], subject, body)
+            dashboard_url = digest.magic_dashboard_url(user, str(request.base_url))
+            subject, body, html_body = digest.build_welcome_email(dashboard_url)
+            digest.send_email(smtp_email, app_password, user["email"], subject, body, html_body)
         except Exception as e:
             print(f"[settings/email] Failed to send welcome email to {user['email']}: {e}")
 
@@ -375,6 +472,34 @@ def regenerate_link(request: Request, user=Depends(require_user)):
     return RedirectResponse("/dashboard", status_code=303)
 
 
+@app.post("/settings/course-color")
+def set_course_color(tag: str = Form(...), color_hex: str = Form(...), user=Depends(require_user)):
+    if not re.match(r"^#[0-9a-fA-F]{6}$", color_hex):
+        return {"status": "error", "detail": "Expected a #rrggbb color"}
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT INTO course_colors (user_id, tag, color_hex) VALUES (?, ?, ?) "
+            "ON CONFLICT(user_id, tag) DO UPDATE SET color_hex = excluded.color_hex",
+            (user["id"], tag, color_hex),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"status": "ok"}
+
+
+@app.post("/settings/course-color/reset")
+def reset_course_color(tag: str = Form(...), user=Depends(require_user)):
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM course_colors WHERE user_id = ? AND tag = ?", (user["id"], tag))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"status": "ok"}
+
+
 @app.post("/settings/password")
 def change_password(
     request: Request,
@@ -400,13 +525,17 @@ def send_test(request: Request, user=Depends(require_user)):
     conn = get_connection()
     try:
         rows = conn.execute(
-            "SELECT due_date, title FROM assignments WHERE user_id = ?", (user["id"],)
+            "SELECT due_date, title, urgent FROM assignments WHERE user_id = ? AND completed = 0",
+            (user["id"],),
         ).fetchall()
     finally:
         conn.close()
-    items = [{"due_date": datetime.strptime(r["due_date"], "%Y-%m-%d").date(), "title": r["title"]} for r in rows]
+    items = [
+        {"due_date": datetime.strptime(r["due_date"], "%Y-%m-%d").date(), "title": r["title"], "urgent": bool(r["urgent"])}
+        for r in rows
+    ]
     try:
-        digest.send_digest_for_user(user, items)
+        digest.send_digest_for_user(user, items, base_url=str(request.base_url))
         request.session["message"] = f"Test email sent to {user['email']}."
     except ValueError as e:
         request.session["message"] = str(e)

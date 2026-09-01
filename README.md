@@ -30,6 +30,29 @@ to-do list (today / tomorrow / this week).
   below for why both exist.
 - A "send me a test email now" button (works even while paused, so you can
   verify setup).
+- **Personal magic links.** Every digest/welcome email ends with a link tied
+  to your account -- click it and you're logged straight in on your
+  dashboard, no password needed. Resettable from the dashboard if one ever
+  leaks. Built from the actual request host, not a hardcoded setting, so it
+  works correctly even before `APP_BASE_URL` is configured on a deployment.
+- **Done / urgent, per assignment.** A checkbox marks something complete
+  (excluded from future digests, shown struck-through); a flag marks it
+  urgent (highlighted in the table and in emails). Marking something urgent
+  starts a 12-hour countdown -- stored in the database, not an in-memory
+  timer, so it survives a redeploy or a sleeping free-tier host -- after
+  which a follow-up "Urgent Reminder" email goes out listing that item and
+  anything else still urgent.
+- **Course color coding.** Titles in the "[COURSE] rest of title" convention
+  (what the parser and CSV import both produce) get a consistent auto-assigned
+  color per course, shown as a stripe/dot in the table and a matching chip in
+  emails. Each course's color can be overridden from the legend's color
+  picker. Uploading one combined document spanning multiple classes
+  auto-tags items by course when it finds clear course-code header lines
+  (e.g. "MATH 113", "PHYS 190") -- a pattern heuristic, not real document
+  understanding, so always worth a glance afterward.
+- **HTML email** (Hamilton blue/buff themed, matching the site) for the daily
+  digest, urgent reminders, and welcome email, each with a plain-text
+  fallback for clients that don't render HTML.
 
 ## Running it locally
 

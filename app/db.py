@@ -27,10 +27,21 @@ CREATE TABLE IF NOT EXISTS assignments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     due_date TEXT NOT NULL,
-    title TEXT NOT NULL
+    title TEXT NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0,
+    urgent INTEGER NOT NULL DEFAULT 0,
+    urgent_marked_at TEXT,
+    urgent_reminder_sent INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_assignments_user ON assignments(user_id);
+
+CREATE TABLE IF NOT EXISTS course_colors (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tag TEXT NOT NULL,
+    color_hex TEXT NOT NULL,
+    PRIMARY KEY (user_id, tag)
+);
 """
 
 
@@ -47,6 +58,10 @@ def get_connection():
 # for each new column, or every query touching it fails with "no such column".
 MIGRATIONS = [
     ("users", "magic_token", "ALTER TABLE users ADD COLUMN magic_token TEXT"),
+    ("assignments", "completed", "ALTER TABLE assignments ADD COLUMN completed INTEGER NOT NULL DEFAULT 0"),
+    ("assignments", "urgent", "ALTER TABLE assignments ADD COLUMN urgent INTEGER NOT NULL DEFAULT 0"),
+    ("assignments", "urgent_marked_at", "ALTER TABLE assignments ADD COLUMN urgent_marked_at TEXT"),
+    ("assignments", "urgent_reminder_sent", "ALTER TABLE assignments ADD COLUMN urgent_reminder_sent INTEGER NOT NULL DEFAULT 0"),
 ]
 
 

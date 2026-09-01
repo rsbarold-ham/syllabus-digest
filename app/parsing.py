@@ -53,6 +53,28 @@ _ASSIGNMENT_KEYWORDS = re.compile(
 )
 
 
+# Detects a course-code header line ("MATH 113", "PHYS190", "JWST-219",
+# "CS 101A") so one big uploaded document covering several classes can have
+# its items auto-tagged per class, the same "[TAG] title" convention used
+# everywhere else in this app. This is a pattern heuristic, not real
+# document understanding -- it only fires when 2+ distinct course codes
+# are found (so an ordinary single-class syllabus is never touched), and
+# it's always safe to correct afterward with an "ignore"/"add" instruction
+# or by hand-editing the row.
+_COURSE_HEADER_RE = re.compile(r"^([A-Z]{2,6}[-\s]\d{2,4}[A-Z]?)\b")
+
+
+def detect_course_sections(text: str):
+    """Returns {line_index: course_label} for each detected header line."""
+    sections = {}
+    for i, raw_line in enumerate(text.splitlines()):
+        m = _COURSE_HEADER_RE.match(raw_line.strip())
+        if m:
+            label = re.sub(r"\s+", " ", m.group(1).strip())
+            sections[i] = label
+    return sections
+
+
 def _looks_like_topic_row(date_text: str, title: str) -> bool:
     """True if this looks like a weekly-schedule/topic row rather than a
     real assignment -- i.e. it has a table-row signal and no due-item
@@ -97,8 +119,16 @@ def guess_year_for(month: int, day: int, default_year: int) -> int:
 
 
 def parse_rows(text: str, default_year: int):
+    lines = text.splitlines()
+    sections = detect_course_sections(text)
+    multi_course = len(set(sections.values())) >= 2  # never auto-tag an ordinary single-class syllabus
+
     rows = []
-    for raw_line in text.splitlines():
+    current_course = None
+    for i, raw_line in enumerate(lines):
+        if i in sections:
+            current_course = sections[i]
+
         line = raw_line.strip()
         match = DATE_HINT.search(line)
         if not line or not match:
@@ -123,6 +153,9 @@ def parse_rows(text: str, default_year: int):
 
         if _LEADING_WEEK_NUMBER.match(title):
             title = _LEADING_WEEK_NUMBER.sub("", title, count=1).strip(" -:|\t.") or title
+
+        if multi_course and current_course and not title.startswith("["):
+            title = f"[{current_course}] {title}"
 
         rows.append({"due_date": parsed.isoformat(), "title": title})
     return rows

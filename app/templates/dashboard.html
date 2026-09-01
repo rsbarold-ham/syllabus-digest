@@ -8,10 +8,12 @@
 </head>
 <body>
     <div class="topbar">
-        <h1>Syllabus Digest</h1>
-        <div class="topbar-user">
-            <span>{{ user["email"] }}</span>
-            <a href="/logout">Log out</a>
+        <div class="topbar-inner">
+            <h1>Syllabus Digest</h1>
+            <div class="topbar-user">
+                <span>{{ user["email"] }}</span>
+                <a href="/logout">Log out</a>
+            </div>
         </div>
     </div>
 
@@ -21,6 +23,54 @@
         {% if not user["smtp_email"] %}
         <div class="banner banner-warn">You haven't set up a sending email yet -- your daily digest won't go out until you do. See "Email sending" below.</div>
         {% endif %}
+
+        <section class="card">
+            <h2>Upload a syllabus</h2>
+            <p class="hint">PDF, DOCX, or TXT. Parsing is a first draft -- always review the list below afterward.</p>
+            <form method="post" action="/upload" enctype="multipart/form-data" class="stack">
+                <div class="field">
+                    <label for="syllabus">File</label>
+                    <input id="syllabus" type="file" name="syllabus" accept=".pdf,.docx,.txt" required>
+                </div>
+                <div class="field field-narrow">
+                    <label for="year">Year to assume if the syllabus omits it</label>
+                    <input id="year" type="number" name="year" value="{{ current_year }}">
+                </div>
+                <div class="field">
+                    <label for="instructions">Parsing instructions (optional) -- one per line</label>
+                    <textarea id="instructions" name="instructions" rows="4" placeholder="ignore lines containing &quot;office hours&quot;&#10;add prelab due every wednesday at 12pm&#10;add exit ticket due every friday&#10;add final project on december 15"></textarea>
+                    <p class="hint hint-tight">
+                        Only these two shapes are understood (anything else is skipped and reported back to you --
+                        fix those by hand in the table below instead):
+                        <br>&bull; <code>ignore/remove/exclude lines containing "some text"</code>
+                        <br>&bull; <code>add &lt;title&gt; due every &lt;weekday&gt; [at &lt;time&gt;]</code> or <code>add &lt;title&gt; on &lt;date&gt;</code>
+                    </p>
+                    <p class="hint hint-tight">
+                        Uploading one combined document covering several classes? Items get
+                        auto-tagged by course when the file has clear course-code header lines
+                        (like "MATH 113" or "PHYS 190") -- review the result below, since that's
+                        a pattern match, not true understanding of the document.
+                    </p>
+                </div>
+                <button type="submit" class="btn btn-primary">Upload &amp; parse</button>
+            </form>
+        </section>
+
+        <section class="card">
+            <h2>Import from a CSV</h2>
+            <p class="hint">
+                Already have a <span class="mono">due_date,title</span> CSV -- e.g. one you built and cleaned up with
+                the local/personal version of this tool? Import it directly instead of re-uploading and re-parsing
+                the original syllabus.
+            </p>
+            <form method="post" action="/import-csv" enctype="multipart/form-data" class="stack">
+                <div class="field">
+                    <label for="csv_file">CSV file</label>
+                    <input id="csv_file" type="file" name="csv_file" accept=".csv" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Import</button>
+            </form>
+        </section>
 
         <section class="card">
             <h2>Email sending</h2>
@@ -85,48 +135,6 @@
                     <input id="app_password" type="password" name="app_password" required placeholder="abcd efgh ijkl mnop">
                 </div>
                 <button type="submit" class="btn btn-primary">Save &amp; verify</button>
-            </form>
-        </section>
-
-        <section class="card">
-            <h2>Upload a syllabus</h2>
-            <p class="hint">PDF, DOCX, or TXT. Parsing is a first draft -- always review the list below afterward.</p>
-            <form method="post" action="/upload" enctype="multipart/form-data" class="stack">
-                <div class="field">
-                    <label for="syllabus">File</label>
-                    <input id="syllabus" type="file" name="syllabus" accept=".pdf,.docx,.txt" required>
-                </div>
-                <div class="field field-narrow">
-                    <label for="year">Year to assume if the syllabus omits it</label>
-                    <input id="year" type="number" name="year" value="{{ current_year }}">
-                </div>
-                <div class="field">
-                    <label for="instructions">Parsing instructions (optional) -- one per line</label>
-                    <textarea id="instructions" name="instructions" rows="4" placeholder="ignore lines containing &quot;office hours&quot;&#10;add prelab due every wednesday at 12pm&#10;add exit ticket due every friday&#10;add final project on december 15"></textarea>
-                    <p class="hint hint-tight">
-                        Only these two shapes are understood (anything else is skipped and reported back to you --
-                        fix those by hand in the table below instead):
-                        <br>&bull; <code>ignore/remove/exclude lines containing "some text"</code>
-                        <br>&bull; <code>add &lt;title&gt; due every &lt;weekday&gt; [at &lt;time&gt;]</code> or <code>add &lt;title&gt; on &lt;date&gt;</code>
-                    </p>
-                </div>
-                <button type="submit" class="btn btn-primary">Upload &amp; parse</button>
-            </form>
-        </section>
-
-        <section class="card">
-            <h2>Import from a CSV</h2>
-            <p class="hint">
-                Already have a <span class="mono">due_date,title</span> CSV -- e.g. one you built and cleaned up with
-                the local/personal version of this tool? Import it directly instead of re-uploading and re-parsing
-                the original syllabus.
-            </p>
-            <form method="post" action="/import-csv" enctype="multipart/form-data" class="stack">
-                <div class="field">
-                    <label for="csv_file">CSV file</label>
-                    <input id="csv_file" type="file" name="csv_file" accept=".csv" required>
-                </div>
-                <button type="submit" class="btn btn-primary">Import</button>
             </form>
         </section>
 
@@ -200,18 +208,53 @@
             </div>
             <p class="hint">Edits save automatically as you leave a field. Nothing is removed unless you click Delete.</p>
 
+            {% set course_tags = assignments | selectattr('tag') | map(attribute='tag') | unique | list %}
+            {% if course_tags %}
+            <div class="legend" id="courseLegend">
+                {% for tag in course_tags %}
+                {% set row = assignments | selectattr('tag', 'equalto', tag) | first %}
+                <span class="legend-item">
+                    <span class="course-dot" style="--course-color: {{ row['color_value'] }};"></span>{{ tag }}
+                    <input type="color" class="course-color-picker" data-tag="{{ tag }}"
+                           value="{{ row['color_value'] if row['is_custom_color'] else '#888888' }}"
+                           title="Pick a color for {{ tag }}">
+                    {% if row['is_custom_color'] %}
+                    <button type="button" class="legend-reset" data-tag="{{ tag }}" title="Reset to default color">&times;</button>
+                    {% endif %}
+                </span>
+                {% endfor %}
+            </div>
+            {% endif %}
+
             <div class="table-scroll">
                 <table id="assignmentsTable">
                     <thead>
-                        <tr><th class="col-date">Due date</th><th>Title</th><th class="col-status"></th><th class="col-actions"></th></tr>
+                        <tr>
+                            <th class="col-done"></th>
+                            <th class="col-date">Due date</th>
+                            <th>Title</th>
+                            <th class="col-status"></th>
+                            <th class="col-actions"></th>
+                        </tr>
                     </thead>
                     <tbody>
                         {% for a in assignments %}
-                        <tr data-id="{{ a['id'] }}">
+                        <tr data-id="{{ a['id'] }}"
+                            {% if a['tag'] %}data-course="{{ a['tag'] }}" style="--course-color: {{ a['color_value'] }};"{% endif %}
+                            class="{{ 'is-completed' if a['completed'] }} {{ 'is-urgent' if a['urgent'] and not a['completed'] }}">
+                            <td class="col-done">
+                                <input type="checkbox" class="done-checkbox" data-toggle="complete" {% if a['completed'] %}checked{% endif %} title="Mark done">
+                            </td>
                             <td class="col-date"><input type="date" class="autosave" data-field="due_date" value="{{ a['due_date'] }}"></td>
-                            <td><input type="text" class="autosave" data-field="title" value="{{ a['title'] }}"></td>
+                            <td>
+                                <div class="title-cell">
+                                    {% if a['tag'] %}<span class="course-dot"></span>{% endif %}
+                                    <input type="text" class="autosave" data-field="title" value="{{ a['title'] }}">
+                                </div>
+                            </td>
                             <td class="col-status"><span class="save-indicator"></span></td>
                             <td class="col-actions">
+                                <button type="button" class="btn btn-icon btn-sm {{ 'active' if a['urgent'] }}" data-toggle="urgent" title="Mark urgent">&#9888;</button>
                                 <form method="post" action="/assignments/{{ a['id'] }}/delete" class="inline-form">
                                     <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete this item?')">Delete</button>
                                 </form>
@@ -241,6 +284,26 @@
     (function () {
         var flash = document.getElementById("flash");
         if (flash) { setTimeout(function () { flash.classList.add("banner-fade"); }, 6000); }
+
+        document.querySelectorAll(".course-color-picker").forEach(function (picker) {
+            picker.addEventListener("change", function () {
+                fetch("/settings/course-color", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    body: new URLSearchParams({ tag: picker.getAttribute("data-tag"), color_hex: picker.value }).toString(),
+                }).then(function () { window.location.reload(); });
+            });
+        });
+
+        document.querySelectorAll(".legend-reset").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                fetch("/settings/course-color/reset", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    body: new URLSearchParams({ tag: btn.getAttribute("data-tag") }).toString(),
+                }).then(function () { window.location.reload(); });
+            });
+        });
 
         document.querySelectorAll("#assignmentsTable tbody tr").forEach(function (row) {
             var id = row.getAttribute("data-id");
@@ -281,6 +344,35 @@
                 }).catch(function () {
                     indicator.textContent = "Offline?";
                     indicator.className = "save-indicator error";
+                });
+            }
+
+            var doneBox = row.querySelector('[data-toggle="complete"]');
+            if (doneBox) {
+                doneBox.addEventListener("change", function () {
+                    var checked = doneBox.checked;
+                    row.classList.toggle("is-completed", checked);
+                    if (checked) row.classList.remove("is-urgent");
+                    else if (urgentBtn && urgentBtn.classList.contains("active")) row.classList.add("is-urgent");
+                    fetch("/assignments/" + id + "/toggle-complete", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                        body: "completed=" + (checked ? "1" : "0"),
+                    });
+                });
+            }
+
+            var urgentBtn = row.querySelector('[data-toggle="urgent"]');
+            if (urgentBtn) {
+                urgentBtn.addEventListener("click", function () {
+                    var nowActive = !urgentBtn.classList.contains("active");
+                    urgentBtn.classList.toggle("active", nowActive);
+                    row.classList.toggle("is-urgent", nowActive && !(doneBox && doneBox.checked));
+                    fetch("/assignments/" + id + "/toggle-urgent", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                        body: "urgent=" + (nowActive ? "1" : "0"),
+                    });
                 });
             }
         });
