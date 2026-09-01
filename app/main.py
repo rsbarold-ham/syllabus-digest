@@ -182,6 +182,51 @@ def upload(
     return RedirectResponse("/dashboard", status_code=303)
 
 
+@app.post("/import-csv")
+def import_csv(request: Request, csv_file: UploadFile = File(...), user=Depends(require_user)):
+    """Bulk-import rows from a due_date,title CSV -- e.g. an assignments.csv
+    already built and hand-corrected by the personal (local) version of this
+    tool, so that work doesn't need to be redone through the syllabus parser."""
+    import csv
+    import io
+
+    filename = csv_file.filename or ""
+    if not filename.lower().endswith(".csv"):
+        request.session["message"] = "Please upload a .csv file (columns: due_date, title)."
+        return RedirectResponse("/dashboard", status_code=303)
+
+    raw = csv_file.file.read().decode("utf-8", errors="ignore")
+    reader = csv.DictReader(io.StringIO(raw))
+
+    rows = []
+    skipped = 0
+    for row in reader:
+        due = (row.get("due_date") or "").strip()
+        title = (row.get("title") or "").strip()
+        if not due or not title:
+            skipped += 1
+            continue
+        try:
+            date.fromisoformat(due)
+        except ValueError:
+            skipped += 1
+            continue
+        rows.append((user["id"], due, title))
+
+    conn = get_connection()
+    try:
+        conn.executemany(
+            "INSERT INTO assignments (user_id, due_date, title) VALUES (?, ?, ?)", rows
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    skip_note = f" ({skipped} row(s) skipped -- missing or malformed due_date/title.)" if skipped else ""
+    request.session["message"] = f"Imported {len(rows)} row(s) from {filename}.{skip_note}"
+    return RedirectResponse("/dashboard", status_code=303)
+
+
 @app.post("/assignments/add")
 def add_assignment(request: Request, due_date: str = Form(...), title: str = Form(...), user=Depends(require_user)):
     conn = get_connection()

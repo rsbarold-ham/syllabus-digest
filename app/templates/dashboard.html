@@ -107,6 +107,20 @@
     </div>
 
     <div class="card">
+        <h2>Import from a CSV</h2>
+        <p style="font-size:0.85rem;color:#555;">
+            Already have a <span class="mono">due_date,title</span> CSV -- e.g. one you built and cleaned up with
+            the local/personal version of this tool? Import it directly instead of re-uploading and re-parsing the
+            original syllabus.
+        </p>
+        <form method="post" action="/import-csv" enctype="multipart/form-data">
+            <label>CSV file</label>
+            <input type="file" name="csv_file" accept=".csv" required>
+            <button type="submit">Import</button>
+        </form>
+    </div>
+
+    <div class="card">
         <h2>Daily email</h2>
 
         {% if not user["digest_enabled"] %}
