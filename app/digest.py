@@ -180,6 +180,18 @@ def send_email(sender_email: str, app_password: str, to_address: str, subject: s
     msg["To"] = to_address
 
     context = ssl.create_default_context()
-    with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, context=context) as server:
-        server.login(sender_email, app_password)
-        server.send_message(msg)
+    try:
+        with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, context=context) as server:
+            server.login(sender_email, app_password)
+            server.send_message(msg)
+    except smtplib.SMTPAuthenticationError:
+        raise ValueError(
+            f"Google rejected the app password for {sender_email}. This means the "
+            "email/app-password pair in Settings doesn't work anymore -- it's not "
+            "something to retry, it needs fixing there. Most often this is because "
+            "a real Gmail password was entered instead of an app password, the "
+            "address doesn't match the Google account the app password was made "
+            "for, or the app password was revoked. Generate a fresh one at "
+            "myaccount.google.com/apppasswords and re-enter it under \"Replace it\" "
+            "in Email sending."
+        )
