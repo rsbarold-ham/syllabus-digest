@@ -1,7 +1,13 @@
+import os
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parent.parent / "app.db"
+# Defaults to sitting next to the app's own code, which is fine for local
+# dev but sits on the *ephemeral* part of the filesystem on most hosts --
+# it gets wiped on every redeploy/restart. Set DB_PATH to a file on a
+# persistent disk (e.g. Render's paid persistent-disk mount) to survive
+# those. See README for the exact steps.
+DB_PATH = Path(os.environ.get("DB_PATH") or (Path(__file__).resolve().parent.parent / "app.db"))
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -45,6 +51,7 @@ MIGRATIONS = [
 
 
 def init_db():
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = get_connection()
     try:
         conn.executescript(SCHEMA)

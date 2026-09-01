@@ -63,17 +63,25 @@ your own PC:
    `https://<your-app>.onrender.com/internal/trigger-digest?token=<your TRIGGER_SECRET>`
    That ping wakes the app and runs the same digest check, so emails go out
    on schedule regardless of whether the free tier had gone to sleep.
-5. **Data persistence caveat:** Render's free tier disk is *ephemeral* --
-   the SQLite file can be wiped on redeploys/restarts. Fine for testing;
-   for anything you don't want to lose, either upgrade to a Render plan
-   with a persistent disk, or move to a managed free Postgres (e.g. Neon,
-   Supabase, or Render's own Postgres) -- that's a real code change
-   (`db.py` would need to speak Postgres instead of raw `sqlite3`), not
-   something to do silently, so ask if you want that next.
+5. **Data persistence:** Render's free tier disk is *ephemeral* -- the
+   SQLite file gets wiped on redeploys/restarts, which is almost certainly
+   why signups/settings/assignments have disappeared before. The fix
+   (chosen over migrating to Postgres): attach a **persistent disk**, which
+   requires Render's paid Starter plan or above.
+     - On the service's Render page: **Disks** tab -> **Add Disk**.
+     - Mount path: `/var/data` (any path works, this is just what the env
+       var below should match).
+     - Size: 1 GB is overkill for this app.
+     - Then add an environment variable `DB_PATH` = `/var/data/app.db`.
+     - Redeploy. The app now reads/writes the database on the persistent
+       disk instead of next to its own code, so it survives every future
+       redeploy. (The code change for this -- `DB_PATH` becoming
+       configurable -- is already in this repo; attaching the disk and
+       paying for the plan is the part only you can do.)
 
-None of steps 2-4 can be done on your behalf -- they require an account
-only you can create. Everything up through step 1 is already done for you
-in this repo.
+None of steps 2-5 can be done on your behalf -- they require an account,
+and in step 5's case a paid plan, only you can create/approve. Everything
+up through step 1 is already done for you in this repo.
 
 ## Other things worth knowing before wider use
 
