@@ -14,10 +14,18 @@ from html import escape as _esc
 SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.environ.get("SMTP_PORT", "465"))
 
-# Used to build the "add more assignments" link at the bottom of each
-# digest. Set this to the real deployed URL once this is hosted somewhere
-# other than localhost (see README).
-APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:8000").rstrip("/")
+# Used to build the personal magic-link at the bottom of every digest sent
+# by the background scheduler -- unlike an interactive request (test-send,
+# dashboard view), a scheduled job has no incoming request to read a host
+# from, so this is the only source of truth for those sends.
+#
+# Priority: an explicitly-set APP_BASE_URL always wins (e.g. a custom
+# domain); otherwise, on Render, RENDER_EXTERNAL_URL is set automatically by
+# the platform on every service -- no manual configuration needed; only
+# plain local dev falls through to localhost.
+APP_BASE_URL = (
+    os.environ.get("APP_BASE_URL") or os.environ.get("RENDER_EXTERNAL_URL") or "http://localhost:8000"
+).rstrip("/")
 
 
 def bucket_items(items, today: date):
