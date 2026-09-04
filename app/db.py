@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS users (
     smtp_email TEXT,
     smtp_app_password_encrypted TEXT,
     magic_token TEXT UNIQUE,
+    reset_token TEXT,
+    reset_token_expires TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -62,6 +64,8 @@ MIGRATIONS = [
     ("assignments", "urgent", "ALTER TABLE assignments ADD COLUMN urgent INTEGER NOT NULL DEFAULT 0"),
     ("assignments", "urgent_marked_at", "ALTER TABLE assignments ADD COLUMN urgent_marked_at TEXT"),
     ("assignments", "urgent_reminder_sent", "ALTER TABLE assignments ADD COLUMN urgent_reminder_sent INTEGER NOT NULL DEFAULT 0"),
+    ("users", "reset_token", "ALTER TABLE users ADD COLUMN reset_token TEXT"),
+    ("users", "reset_token_expires", "ALTER TABLE users ADD COLUMN reset_token_expires TEXT"),
 ]
 
 

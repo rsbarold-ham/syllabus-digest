@@ -158,6 +158,72 @@ def logout(request: Request):
     return RedirectResponse("/login", status_code=303)
 
 
+# Same wording regardless of what actually happened (no such account, or an
+# account with no sending email configured yet) -- distinguishing them in
+# the response would let someone probe which emails have accounts here.
+_FORGOT_PASSWORD_GENERIC_MESSAGE = (
+    "If that email has an account with a sending address set up, a reset link is on its way. "
+    "Check your inbox (and spam folder)."
+)
+
+
+@app.get("/forgot-password", response_class=HTMLResponse)
+def forgot_password_form(request: Request):
+    return templates.TemplateResponse(
+        request, "forgot_password.html", {"message": request.session.pop("message", None)}
+    )
+
+
+@app.post("/forgot-password")
+def forgot_password(request: Request, email: str = Form(...)):
+    conn = get_connection()
+    try:
+        user = conn.execute("SELECT * FROM users WHERE email = ?", (email.strip().lower(),)).fetchone()
+    finally:
+        conn.close()
+
+    if user and user["smtp_email"] and user["smtp_app_password_encrypted"]:
+        try:
+            token = auth.create_reset_token(user["id"])
+            reset_url = f"{str(request.base_url).rstrip('/')}/reset-password/{token}"
+            digest.send_password_reset_email(user, reset_url)
+        except Exception as e:
+            print(f"[forgot-password] Failed to send reset email to {user['email']}: {e}")
+
+    return templates.TemplateResponse(request, "forgot_password.html", {"message": _FORGOT_PASSWORD_GENERIC_MESSAGE})
+
+
+@app.get("/reset-password/{token}", response_class=HTMLResponse)
+def reset_password_form(token: str, request: Request):
+    user = auth.user_by_reset_token(token)
+    if not user:
+        request.session["message"] = "That reset link is invalid or has expired. Request a new one below."
+        return RedirectResponse("/forgot-password", status_code=303)
+    return templates.TemplateResponse(request, "reset_password.html", {"token": token, "error": None})
+
+
+@app.post("/reset-password/{token}")
+def reset_password(token: str, request: Request, new_password: str = Form(...), confirm_password: str = Form(...)):
+    user = auth.user_by_reset_token(token)
+    if not user:
+        request.session["message"] = "That reset link is invalid or has expired. Request a new one below."
+        return RedirectResponse("/forgot-password", status_code=303)
+
+    if len(new_password) < 8:
+        return templates.TemplateResponse(
+            request, "reset_password.html", {"token": token, "error": "Password must be at least 8 characters."}
+        )
+    if new_password != confirm_password:
+        return templates.TemplateResponse(
+            request, "reset_password.html", {"token": token, "error": "Passwords didn't match."}
+        )
+
+    auth.set_password(user["id"], new_password)
+    auth.clear_reset_token(user["id"])
+    request.session["message"] = "Password reset. Log in with your new password."
+    return RedirectResponse("/login", status_code=303)
+
+
 @app.get("/go/{token}")
 def magic_login(token: str, request: Request):
     """The personalized link from the bottom of digest/welcome emails --

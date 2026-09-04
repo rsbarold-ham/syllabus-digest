@@ -1,12 +1,14 @@
 import hashlib
 import hmac
 import secrets
+from datetime import datetime, timedelta
 
 from fastapi import Request, HTTPException
 
 from .db import get_connection
 
 PBKDF2_ITERATIONS = 200_000
+RESET_TOKEN_LIFETIME = timedelta(hours=1)
 
 
 def hash_password(password: str, salt: str | None = None) -> tuple[str, str]:
@@ -68,6 +70,52 @@ def set_password(user_id: int, new_password: str):
         conn.execute(
             "UPDATE users SET password_hash = ?, password_salt = ? WHERE id = ?",
             (password_hash, salt, user_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def create_reset_token(user_id: int) -> str:
+    """Single-use, 1-hour-lived token for the forgot-password flow. Storing
+    it (rather than e.g. a signed JWT) means it can be invalidated the
+    moment it's used or superseded by a newer request."""
+    token = secrets.token_urlsafe(32)
+    expires = (datetime.utcnow() + RESET_TOKEN_LIFETIME).isoformat()
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?",
+            (token, expires, user_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return token
+
+
+def user_by_reset_token(token: str):
+    """Returns the user row if the token exists and hasn't expired, else None."""
+    if not token:
+        return None
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM users WHERE reset_token = ?", (token,)).fetchone()
+    finally:
+        conn.close()
+    if not row or not row["reset_token_expires"]:
+        return None
+    if datetime.utcnow() > datetime.fromisoformat(row["reset_token_expires"]):
+        return None
+    return row
+
+
+def clear_reset_token(user_id: int):
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE users SET reset_token = NULL, reset_token_expires = NULL WHERE id = ?",
+            (user_id,),
         )
         conn.commit()
     finally:

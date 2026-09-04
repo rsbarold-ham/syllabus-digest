@@ -525,6 +525,64 @@ def send_urgent_reminder(user_row, items, base_url: str | None = None):
     send_email(user_row["smtp_email"], app_password, user_row["email"], subject, text_body, html_body)
 
 
+def send_password_reset_email(user_row, reset_url: str):
+    """Sent when someone requests a password reset while logged out --
+    through their OWN stored Gmail app password, not a shared site account.
+    That's why this only works for a user who already has one configured:
+    there's no site-wide sending account to fall back on. Raises ValueError
+    if they don't -- the caller should treat that the same as "user not
+    found" in its response, so a failed lookup and a missing sending
+    account aren't distinguishable to whoever's asking (avoids leaking
+    which emails have accounts)."""
+    from . import crypto
+
+    if not user_row["smtp_email"] or not user_row["smtp_app_password_encrypted"]:
+        raise ValueError("No sending email configured -- can't deliver a reset link.")
+
+    app_password = crypto.decrypt(user_row["smtp_app_password_encrypted"])
+
+    subject = "Reset your password -- Syllabus Digest"
+    text_body = (
+        "Someone (hopefully you) asked to reset the password for this account.\n\n"
+        f"Reset it here (expires in 1 hour, works once): {reset_url}\n\n"
+        "If you didn't request this, you can ignore this email -- your password won't change.\n"
+    )
+    html_body = f"""\
+<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:#f4f6fb;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6fb;padding:24px 12px;">
+<tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:10px;overflow:hidden;border:1px solid #d7dcec;">
+  <tr>
+    <td style="background-color:#002f86;background-image:linear-gradient(135deg,#002f86,#001f5c);border-bottom:4px solid #b9924f;padding:20px 24px;">
+      <div style="font-family:Georgia,serif;font-size:20px;font-weight:700;color:#ffffff;">Reset your password</div>
+      <div style="font-family:Arial,sans-serif;font-size:13px;color:#dfe6fa;margin-top:4px;">Syllabus Digest</div>
+    </td>
+  </tr>
+  <tr><td style="padding:22px 22px 4px;font-family:Arial,sans-serif;font-size:14px;color:#10192f;line-height:1.55;">
+    Someone (hopefully you) asked to reset the password for this account.
+  </td></tr>
+  <tr>
+    <td style="padding:16px 22px;">
+      <a href="{_esc(reset_url)}" style="display:inline-block;background:#b9924f;color:#ffffff;
+        font-family:Arial,sans-serif;font-size:13px;font-weight:600;text-decoration:none;
+        padding:10px 18px;border-radius:6px;">Reset your password</a>
+    </td>
+  </tr>
+  <tr><td style="padding:4px 22px 22px;font-family:Arial,sans-serif;font-size:12px;color:#8891ab;line-height:1.5;">
+    This link expires in 1 hour and works once. If you didn't request this, you can ignore
+    this email -- your password won't change.
+  </td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>"""
+
+    send_email(user_row["smtp_email"], app_password, user_row["email"], subject, text_body, html_body)
+
+
 def verify_smtp_credentials(sender_email: str, app_password: str):
     """Attempts to log in only (no email sent), so Settings can confirm a
     credential works the moment it's entered instead of only finding out at
